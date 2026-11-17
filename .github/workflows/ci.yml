@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install the .NET SDK from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore ClosedValues.slnx
+
+      - name: Build
+        run: dotnet build ClosedValues.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet run --project tests/ClosedValues.Tests --configuration Release --no-build
+
+      - name: Run the examples
+        run: dotnet run --project samples/ClosedValues.Examples --configuration Release --no-build
+
+      - name: Pack
+        run: dotnet pack src/ClosedValues/ClosedValues.csproj --configuration Release --no-build --output artifacts
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: artifacts/*.nupkg
+          if-no-files-found: error

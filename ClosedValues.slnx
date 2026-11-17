@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/ClosedValues.Examples/ClosedValues.Examples.csproj" />
+  </Folder>
+  <Folder Name="/SolutionItems/">
+    <File Path=".github/workflows/ci.yml" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/ClosedValues/ClosedValues.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ClosedValues.Tests/ClosedValues.Tests.csproj" />
+  </Folder>
+</Solution>
