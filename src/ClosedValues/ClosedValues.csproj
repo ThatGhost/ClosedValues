@@ -14,8 +14,8 @@
     <PackageId>ClosedValues</PackageId>
     <Version>0.1.0</Version>
     <Authors>Ibn Zwanckaert</Authors>
-    <Description>A source generator and analyzer for closed value types: a sealed class with named members and a fixed set of static instances, with generated equality, All and an exhaustive Match.</Description>
-    <PackageTags>source-generator;analyzer;smart-enum;value-object;closed</PackageTags>
+    <Description>A source generator and analyzer for closed value types: a class, record, struct or record struct with named members and a fixed set of static instances, with generated equality, All and an exhaustive Match.</Description>
+    <PackageTags>source-generator;analyzer;smart-enum;value-object;closed;record;struct</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/ThatGhost/ClosedValues</PackageProjectUrl>

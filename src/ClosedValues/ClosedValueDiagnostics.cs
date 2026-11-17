@@ -75,10 +75,19 @@ namespace ClosedValues
             isEnabledByDefault: true,
             helpLinkUri: HelpLink("CV0008"));
 
+        public static readonly DiagnosticDescriptor DefaultValue = new(
+            "CV0006",
+            "Closed value struct created with default",
+            "Do not use the default value of '{0}' outside its own type. Use one of its static instances instead.",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            helpLinkUri: HelpLink("CV0006"));
+
         public static readonly DiagnosticDescriptor UnsupportedShape = new(
             "CV0007",
             "Closed value has an unsupported shape",
-            "Make '{0}' a top-level, non-generic, non-static class",
+            "Make '{0}' a top-level, non-generic, non-static class, record or struct. A ref struct is not supported.",
             Category,
             DiagnosticSeverity.Error,
             isEnabledByDefault: true,

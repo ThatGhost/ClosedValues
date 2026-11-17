@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 namespace ClosedValues
 {
     /// <summary>
-    /// Writes the generated partial class for one closed value type.
+    /// Writes the generated partial class, record or struct for one closed value type.
     /// </summary>
     internal sealed class ClosedValueSourceWriter(ClosedValueModel model)
     {
@@ -16,6 +16,17 @@ namespace ClosedValues
         private string Type => Identifier(model.TypeName);
 
         private string Nullable => model.SupportsNullable ? "?" : string.Empty;
+
+        /// <summary>The annotation for a variable of this type that may hold no instance; a struct always holds one.</summary>
+        private string InstanceNullable => model.IsValueType ? string.Empty : Nullable;
+
+        private string Keyword => (model.IsRecord, model.IsValueType) switch
+        {
+            (true, true) => "record struct",
+            (true, false) => "record",
+            (false, true) => "struct",
+            (false, false) => "class",
+        };
 
         public string Write()
         {
@@ -33,7 +44,8 @@ namespace ClosedValues
                 OpenBlock();
             }
 
-            AppendLine($"partial class {Type} : global::System.IEquatable<{Type}>");
+            // A record gets its equality and IEquatable<T> from the compiler.
+            AppendLine(model.IsRecord ? $"partial {Keyword} {Type}" : $"partial {Keyword} {Type} : global::System.IEquatable<{Type}>");
             OpenBlock();
             WriteConstructor();
             WriteAll();
@@ -53,6 +65,12 @@ namespace ClosedValues
 
         private void WriteConstructor()
         {
+            if (model.IsValueType && model.Members.Count == 0)
+            {
+                // A struct cannot declare a private parameterless constructor; new() already gives the only value.
+                return;
+            }
+
             string parameters = string.Join(", ", model.Members.Select(member => $"{member.Type} {Parameter(member.Name)}"));
             AppendLine($"private {Type}({parameters})");
             OpenBlock();
@@ -84,10 +102,10 @@ namespace ClosedValues
 
             ClosedValueMember member = model.Members.First();
             string valueType = member.IsString ? member.Type.TrimEnd('?') + Nullable : member.Type;
-            string notNullWhen = model.SupportsNullable && model.HasNotNullWhenAttribute
+            string notNullWhen = model.SupportsNullable && model.HasNotNullWhenAttribute && !model.IsValueType
                 ? "[global::System.Diagnostics.CodeAnalysis.NotNullWhen(true)] "
                 : string.Empty;
-            string result = $"{notNullWhen}out {Type}{Nullable} result";
+            string result = $"{notNullWhen}out {Type}{InstanceNullable} result";
 
             AppendLine($"/// <summary>Finds the instance whose {member.Name} equals <paramref name=\"value\"/>.</summary>");
             AppendLine($"public static bool TryParse({valueType} value, {result})");
@@ -120,7 +138,7 @@ namespace ClosedValues
             CloseBlock();
             CloseBlock();
             AppendLine();
-            AppendLine("result = null;");
+            AppendLine(model.IsValueType ? "result = default;" : "result = null;");
             AppendLine("return false;");
         }
 
@@ -137,7 +155,12 @@ namespace ClosedValues
             OpenBlock();
             foreach (string instance in model.Instances)
             {
-                AppendLine($"if (object.ReferenceEquals(this, {Identifier(instance)})) return {Parameter(instance)}();");
+                // A class compares references: the instances are the only objects. A struct is a copy, and a record
+                // can be copied with 'with', so both compare values.
+                string condition = model.IsRecord || model.IsValueType
+                    ? $"this.Equals({Identifier(instance)})"
+                    : $"object.ReferenceEquals(this, {Identifier(instance)})";
+                AppendLine($"if ({condition}) return {Parameter(instance)}();");
             }
 
             AppendLine($"throw new global::System.InvalidOperationException(\"{model.TypeName} has no instance that matches \" + this + \".\");");
@@ -147,21 +170,36 @@ namespace ClosedValues
 
         private void WriteEquality()
         {
+            if (model.IsRecord)
+            {
+                return;
+            }
+
+            string memberComparison = string.Join(" && ", model.Members.Select(member =>
+                $"global::System.Collections.Generic.EqualityComparer<{member.Type}>.Default.Equals(this.{Identifier(member.Name)}, other.{Identifier(member.Name)})"));
+
             AppendLine("/// <inheritdoc />");
-            AppendLine($"public bool Equals({Type}{Nullable} other)");
+            AppendLine($"public bool Equals({Type}{InstanceNullable} other)");
             OpenBlock();
-            AppendLine("if (other is null) return false;");
-            AppendLine("if (object.ReferenceEquals(this, other)) return true;");
-            string comparison = model.Members.Count == 0
-                ? "false"
-                : string.Join(" && ", model.Members.Select(member =>
-                    $"global::System.Collections.Generic.EqualityComparer<{member.Type}>.Default.Equals(this.{Identifier(member.Name)}, other.{Identifier(member.Name)})"));
-            AppendLine($"return {comparison};");
+            if (model.IsValueType)
+            {
+                // Every struct without members is the same value.
+                AppendLine($"return {(model.Members.Count == 0 ? "true" : memberComparison)};");
+            }
+            else
+            {
+                AppendLine("if (other is null) return false;");
+                AppendLine("if (object.ReferenceEquals(this, other)) return true;");
+                AppendLine($"return {(model.Members.Count == 0 ? "false" : memberComparison)};");
+            }
+
             CloseBlock();
             AppendLine();
 
             AppendLine("/// <inheritdoc />");
-            AppendLine($"public override bool Equals(object{Nullable} obj) => Equals(obj as {Type});");
+            AppendLine(model.IsValueType
+                ? $"public override bool Equals(object{Nullable} obj) => obj is {Type} other && Equals(other);"
+                : $"public override bool Equals(object{Nullable} obj) => Equals(obj as {Type});");
             AppendLine();
 
             AppendLine("/// <inheritdoc />");
@@ -169,7 +207,7 @@ namespace ClosedValues
             OpenBlock();
             if (model.Members.Count == 0)
             {
-                AppendLine("return global::System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);");
+                AppendLine(model.IsValueType ? "return 0;" : "return global::System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);");
             }
             else
             {
@@ -189,10 +227,12 @@ namespace ClosedValues
             AppendLine();
 
             AppendLine("/// <summary>Returns whether both instances are equal.</summary>");
-            AppendLine($"public static bool operator ==({Type}{Nullable} left, {Type}{Nullable} right) => left is null ? right is null : left.Equals(right);");
+            AppendLine(model.IsValueType
+                ? $"public static bool operator ==({Type} left, {Type} right) => left.Equals(right);"
+                : $"public static bool operator ==({Type}{Nullable} left, {Type}{Nullable} right) => left is null ? right is null : left.Equals(right);");
             AppendLine();
             AppendLine("/// <summary>Returns whether both instances differ.</summary>");
-            AppendLine($"public static bool operator !=({Type}{Nullable} left, {Type}{Nullable} right) => !(left == right);");
+            AppendLine($"public static bool operator !=({Type}{InstanceNullable} left, {Type}{InstanceNullable} right) => !(left == right);");
         }
 
         private void WriteToString()
@@ -203,7 +243,11 @@ namespace ClosedValues
                 return;
             }
 
-            AppendLine();
+            if (!model.IsRecord)
+            {
+                AppendLine();
+            }
+
             AppendLine("/// <inheritdoc />");
             AppendLine($"public override string ToString() => this.{Identifier(text.Name)} ?? string.Empty;");
         }

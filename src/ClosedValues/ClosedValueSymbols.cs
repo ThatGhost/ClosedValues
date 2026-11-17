@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace ClosedValues
 {
@@ -14,7 +15,13 @@ namespace ClosedValues
             type.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ClosedValueNames.AttributeMetadataName);
 
         public bool HasSupportedShape(INamedTypeSymbol type) =>
-            type.TypeKind == TypeKind.Class && type.ContainingType is null && !type.IsGenericType && !type.IsStatic;
+            (type.TypeKind == TypeKind.Class || (type.TypeKind == TypeKind.Struct && !type.IsRefLikeType))
+            && type.ContainingType is null
+            && !type.IsGenericType
+            && !type.IsStatic;
+
+        public bool IsSupportedDeclaration(SyntaxNode node) =>
+            node is ClassDeclarationSyntax or StructDeclarationSyntax or RecordDeclarationSyntax;
 
         public bool IsAutoProperty(IPropertySymbol property) =>
             property.ContainingType.GetMembers()
@@ -38,7 +45,7 @@ namespace ClosedValues
         }
 
         public bool DeclaresToString(INamedTypeSymbol type) =>
-            type.GetMembers(nameof(ToString)).OfType<IMethodSymbol>().Any(method => method.Parameters.Length == 0 && !IsGeneratedOnly(method));
+            type.GetMembers(nameof(ToString)).OfType<IMethodSymbol>().Any(method => method.Parameters.Length == 0 && !method.IsImplicitlyDeclared && !IsGeneratedOnly(method));
 
         public ISet<string> GetGeneratedMemberNames(INamedTypeSymbol type)
         {
@@ -46,11 +53,15 @@ namespace ClosedValues
             {
                 "All",
                 "allInstances",
-                nameof(Equals),
-                nameof(GetHashCode),
-                "op_Equality",
-                "op_Inequality",
             };
+
+            if (!type.IsRecord)
+            {
+                names.Add(nameof(Equals));
+                names.Add(nameof(GetHashCode));
+                names.Add("op_Equality");
+                names.Add("op_Inequality");
+            }
 
             if (GetInstances(type).Any())
             {

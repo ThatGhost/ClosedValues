@@ -15,9 +15,9 @@ namespace ClosedValues
 namespace ClosedValues
 {
     /// <summary>
-    /// Marks a sealed partial class as a closed value: its static readonly instances are the only values it has.
+    /// Marks a partial class, record or struct as a closed value: its static readonly instances are the only values it has.
     /// </summary>
-    [global::System.AttributeUsage(global::System.AttributeTargets.Class, Inherited = false, AllowMultiple = false)]
+    [global::System.AttributeUsage(global::System.AttributeTargets.Class | global::System.AttributeTargets.Struct, Inherited = false, AllowMultiple = false)]
     [global::System.Diagnostics.Conditional(""CLOSEDVALUES_USAGES"")]
     [global::Microsoft.CodeAnalysis.EmbeddedAttribute]
     internal sealed class ClosedValueAttribute : global::System.Attribute

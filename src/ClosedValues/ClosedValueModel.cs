@@ -6,6 +6,8 @@ namespace ClosedValues
     internal sealed record ClosedValueModel(
         string Namespace,
         string TypeName,
+        bool IsRecord,
+        bool IsValueType,
         bool SupportsNullable,
         bool HasNotNullWhenAttribute,
         bool DeclaresToString,

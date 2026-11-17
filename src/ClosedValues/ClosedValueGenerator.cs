@@ -9,7 +9,7 @@ namespace ClosedValues
 {
     /// <summary>
     /// Generates the private constructor, equality, <c>All</c>, <c>Match</c> and <c>ToString</c>
-    /// for every sealed partial class marked with <c>[ClosedValue]</c>.
+    /// for every partial class, record or struct marked with <c>[ClosedValue]</c>.
     /// </summary>
     [Generator(LanguageNames.CSharp)]
     public sealed class ClosedValueGenerator : IIncrementalGenerator
@@ -29,7 +29,7 @@ namespace ClosedValues
             });
 
             IncrementalValuesProvider<ClosedValueModel> models = context.SyntaxProvider
-                .ForAttributeWithMetadataName(ClosedValueNames.AttributeMetadataName, IsPartialClass, CreateModel)
+                .ForAttributeWithMetadataName(ClosedValueNames.AttributeMetadataName, IsPartialType, CreateModel)
                 .Where(model => model is not null)
                 .Select((model, _) => model!);
 
@@ -37,8 +37,8 @@ namespace ClosedValues
                 output.AddSource(model.HintName, new ClosedValueSourceWriter(model).Write()));
         }
 
-        private bool IsPartialClass(SyntaxNode node, CancellationToken cancellationToken) =>
-            node is ClassDeclarationSyntax declaration && declaration.Modifiers.Any(SyntaxKind.PartialKeyword);
+        private bool IsPartialType(SyntaxNode node, CancellationToken cancellationToken) =>
+            symbols.IsSupportedDeclaration(node) && ((TypeDeclarationSyntax)node).Modifiers.Any(SyntaxKind.PartialKeyword);
 
         private ClosedValueModel? CreateModel(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
         {
@@ -65,6 +65,8 @@ namespace ClosedValues
             return new ClosedValueModel(
                 type.ContainingNamespace.IsGlobalNamespace ? string.Empty : type.ContainingNamespace.ToDisplayString(),
                 type.Name,
+                type.IsRecord,
+                type.IsValueType,
                 supportsNullable,
                 context.SemanticModel.Compilation.GetTypeByMetadataName("System.Diagnostics.CodeAnalysis.NotNullWhenAttribute") is not null,
                 symbols.DeclaresToString(type),
