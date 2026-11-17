@@ -23,6 +23,9 @@ namespace ClosedValues
         public bool IsSupportedDeclaration(SyntaxNode node) =>
             node is ClassDeclarationSyntax or StructDeclarationSyntax or RecordDeclarationSyntax;
 
+        public bool HasAttribute(INamedTypeSymbol type, string metadataName) =>
+            type.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == metadataName);
+
         public bool IsAutoProperty(IPropertySymbol property) =>
             property.ContainingType.GetMembers()
                 .OfType<IFieldSymbol>()
@@ -44,6 +47,16 @@ namespace ClosedValues
             return properties.Length == 1 && IsBasicType(properties[0].Type);
         }
 
+        /// <summary>Whether the instances can be ordered by a single member of this type: a basic type other than bool or string.</summary>
+        public bool IsOrderedType(ITypeSymbol type) =>
+            IsBasicType(type) && type.SpecialType is not (SpecialType.System_Boolean or SpecialType.System_String);
+
+        public bool HasOrdering(INamedTypeSymbol type)
+        {
+            IPropertySymbol[] properties = GetStateProperties(type).ToArray();
+            return properties.Length == 1 && IsOrderedType(properties[0].Type);
+        }
+
         public bool DeclaresToString(INamedTypeSymbol type) =>
             type.GetMembers(nameof(ToString)).OfType<IMethodSymbol>().Any(method => method.Parameters.Length == 0 && !method.IsImplicitlyDeclared && !IsGeneratedOnly(method));
 
@@ -53,6 +66,10 @@ namespace ClosedValues
             {
                 "All",
                 "allInstances",
+                "FromName",
+                "TryFromName",
+                "ClosedValueTypeConverter",
+                "ClosedValueJsonConverter",
             };
 
             if (!type.IsRecord)
@@ -71,6 +88,18 @@ namespace ClosedValues
             if (HasTryParse(type))
             {
                 names.Add("TryParse");
+                names.Add("Parse");
+                names.Add("op_Implicit");
+                names.Add("op_Explicit");
+            }
+
+            if (HasOrdering(type))
+            {
+                names.Add("CompareTo");
+                names.Add("op_LessThan");
+                names.Add("op_LessThanOrEqual");
+                names.Add("op_GreaterThan");
+                names.Add("op_GreaterThanOrEqual");
             }
 
             return names;

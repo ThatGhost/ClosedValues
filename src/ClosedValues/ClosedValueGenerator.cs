@@ -52,15 +52,27 @@ namespace ClosedValues
                     property.Name,
                     property.Type.ToDisplayString(typeFormat),
                     property.Type.SpecialType == SpecialType.System_String,
-                    symbols.IsBasicType(property.Type)))
+                    symbols.IsBasicType(property.Type),
+                    symbols.IsOrderedType(property.Type),
+                    property.Type.TypeKind == TypeKind.Enum ? "Enum" : property.Type.SpecialType.ToString().Replace("System_", string.Empty)))
                 .ToImmutableArray();
 
             ImmutableArray<string> instances = symbols.GetInstances(type)
                 .Select(field => field.Name)
                 .ToImmutableArray();
 
-            bool supportsNullable = context.SemanticModel.Compilation is CSharpCompilation compilation
-                && compilation.LanguageVersion >= LanguageVersion.CSharp8;
+            Compilation compilation = context.SemanticModel.Compilation;
+            bool typeConverter = compilation.GetTypeByMetadataName("System.ComponentModel.TypeConverter") is not null;
+            INamedTypeSymbol? jsonConverter = compilation.GetTypeByMetadataName("System.Text.Json.Serialization.JsonConverter`1");
+            ClosedValueConverters converters = new(
+                typeConverter,
+                typeConverter && !symbols.HasAttribute(type, "System.ComponentModel.TypeConverterAttribute"),
+                typeConverter && jsonConverter is not null,
+                typeConverter && jsonConverter is not null && !symbols.HasAttribute(type, "System.Text.Json.Serialization.JsonConverterAttribute"),
+                jsonConverter is not null && jsonConverter.GetMembers("ReadAsPropertyName").Any());
+
+            bool supportsNullable = compilation is CSharpCompilation csharpCompilation
+                && csharpCompilation.LanguageVersion >= LanguageVersion.CSharp8;
 
             return new ClosedValueModel(
                 type.ContainingNamespace.IsGlobalNamespace ? string.Empty : type.ContainingNamespace.ToDisplayString(),
@@ -68,8 +80,9 @@ namespace ClosedValues
                 type.IsRecord,
                 type.IsValueType,
                 supportsNullable,
-                context.SemanticModel.Compilation.GetTypeByMetadataName("System.Diagnostics.CodeAnalysis.NotNullWhenAttribute") is not null,
+                compilation.GetTypeByMetadataName("System.Diagnostics.CodeAnalysis.NotNullWhenAttribute") is not null,
                 symbols.DeclaresToString(type),
+                converters,
                 new EquatableArray<ClosedValueMember>(members),
                 new EquatableArray<string>(instances));
         }

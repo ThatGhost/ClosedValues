@@ -1,7 +1,8 @@
 namespace ClosedValues.Examples.OrderStatuses
 {
     /// <summary>
-    /// The status of an order. One string member, so the generator adds <c>TryParse</c>, and <c>ToString</c> returns that string.
+    /// The status of an order. One string member, so the generator adds <c>TryParse</c>, <c>Parse</c> and the conversions,
+    /// and <c>ToString</c> returns that string.
     /// </summary>
     [ClosedValue]
     public sealed partial class OrderStatus

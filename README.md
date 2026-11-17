@@ -29,9 +29,14 @@ public sealed partial class Planet
 |---|---|
 | Private constructor | One parameter per get-only auto-property, in declaration order. |
 | `All` | Every static readonly instance, in declaration order. |
+| `FromName(name)`, `TryFromName(name, out result)` | Finds the instance by the name of its field, such as `"Earth"`. The default comparison is ordinal; an overload takes a `StringComparison`. `FromName` throws an `ArgumentException` for an unknown name. |
 | `TryParse(value, out result)` | Only when the type has exactly one member of a basic type: `string`, `bool`, `char`, a number type, `DateTime` or an enum. Finds the instance whose member equals `value`. A `string` member also gets an overload with a `StringComparison`; the default comparison is ordinal. |
+| `Parse(value)` | Like `TryParse`, but throws an `ArgumentException` when no instance has the value. |
+| Conversions | Under the same condition as `TryParse`: an implicit conversion to the member, and an explicit conversion from it that calls `Parse`. |
 | `Match<TResult>(...)` | One `Func<TResult>` per instance. A new instance adds a parameter, so every call site stops compiling until it handles the new instance. |
+| `Match<TResult>(@default, ...)` | A fallback `@default` and an optional `Func<TResult>` per instance. Handles a few instances and sends the rest to `@default`. This overload does not stop compiling for a new instance. When an instance is named `Default`, the fallback is `_` instead. |
 | `Equals`, `GetHashCode`, `==`, `!=` | Compare the get-only auto-properties. A record gets these from the compiler instead. |
+| `CompareTo`, `<`, `<=`, `>`, `>=` | Only when the type has exactly one member of a basic type other than `bool` or `string`. Orders the instances by that member, and implements `IComparable<T>`. |
 | `ToString` | Returns the first `string` member. The generator skips it when the type has no `string` member. |
 
 Computed properties, such as `IsInner`, stay yours. The generator ignores them.
@@ -45,9 +50,39 @@ int moons = planet.Match(
     jupiter: () => 95);
 ```
 
+```csharp
+bool hasMoons = planet.Match(@default: () => true, mercury: () => false, venus: () => false);
+
+Planet earth = Planet.FromName("Earth");
+```
+
 A `Match` parameter that is a C# keyword gets an `@` prefix: an instance `Default` becomes `@default`.
 
 A class works directly with dependency injection: `services.AddSingleton(Planet.Earth)`.
+
+## JSON and text conversion
+
+The generator adds two nested converters and applies them to the type with attributes:
+
+| Converter | Used by |
+|---|---|
+| `ClosedValueJsonConverter` | System.Text.Json, through `[JsonConverter]`. Also converts dictionary keys. |
+| `ClosedValueTypeConverter` | `TypeDescriptor`, through `[TypeConverter]`: ASP.NET Core model binding of route and query values, configuration binding, and property grids. |
+
+Both write one value per instance:
+
+- The single member, when the type has exactly one member of a basic type other than an enum. `Priority.High`
+  becomes `3` and `Visibility.Public` becomes `"public"`.
+- The field name otherwise. `Planet.Earth` becomes `"Earth"`.
+
+Reading an unknown value throws a `JsonException` or a `FormatException`. Text uses the invariant culture.
+The generator skips an attribute when the type already has its own `[JsonConverter]` or `[TypeConverter]`,
+and it skips the JSON converter when the project does not reference System.Text.Json.
+
+System.Text.Json source generation (a `JsonSerializerContext`, as used for Native AOT) does not work with closed
+value types. Source generators cannot see each other's output, so the JSON generator sees neither the generated
+constructor nor the generated converter, and it fails to compile metadata for the type. Use the default
+reflection-based serializer, or keep closed values out of the types that a `JsonSerializerContext` covers.
 
 ## Records and structs
 
@@ -84,7 +119,7 @@ The project `samples/ClosedValues.Examples` is a console application with three 
 
 | Example | Shows |
 |---|---|
-| `OrderStatus` | One string member: parse a name with `All`, print the status, and switch on it with `Match`. |
+| `OrderStatus` | One string member: `TryParse`, `FromName`, the conversions, `Match` with and without a fallback. |
 | `Currency` | Two members: an ISO 4217 code and its decimal places, and a `Format` method that reads both. |
 | `SubscriptionPlan` | Four members: computed properties, queries over `All`, a dictionary key, an exhaustive `Match`, and the plan injected into a service through dependency injection. |
 

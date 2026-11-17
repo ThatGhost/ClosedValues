@@ -18,6 +18,14 @@ namespace ClosedValues.Examples.OrderStatuses
 
             Console.WriteLine($"   'returned' is a status: {OrderStatus.TryParse("returned", out _)}.");
 
+            OrderStatus fromName = OrderStatus.FromName("Shipped");
+            OrderStatus converted = (OrderStatus)"paid";
+            string text = OrderStatus.Delivered;
+            Console.WriteLine($"   FromName(\"Shipped\") is '{fromName}', (OrderStatus)\"paid\" is '{converted}', and Delivered converts to \"{text}\".");
+
+            bool canCancel = fromName.Match(@default: () => false, pending: () => true, paid: () => true);
+            Console.WriteLine($"   A {fromName} order can be cancelled: {canCancel}.");
+
             foreach (OrderStatus each in OrderStatus.All)
             {
                 string nextStep = each.Match(
