@@ -98,19 +98,3 @@ tests/ClosedValues.Tests/bin/Debug/net10.0/ClosedValues.Tests.exe
 ```bash
 dotnet pack src/ClosedValues/ClosedValues.csproj -c Release -o artifacts
 ```
-
-## Release
-
-A tag such as `v1.2.3` or `v1.2.3-beta.1` starts the release workflow. The workflow builds and tests the
-project, packs it with the version from the tag, pushes the package to nuget.org and creates a GitHub
-release with the package attached. A tag with a suffix, such as `-beta.1`, makes a prerelease.
-
-```bash
-git tag v0.1.0
-```
-
-```bash
-git push origin v0.1.0
-```
-
-The workflow needs a nuget.org API key in the repository secret `NUGET_API_KEY`.
