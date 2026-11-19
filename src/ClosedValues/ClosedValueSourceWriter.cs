@@ -28,12 +28,11 @@ namespace ClosedValues
             (false, false) => "class",
         };
 
-        /// <summary>The single member of a basic type that TryParse, Parse and the conversions use, or null.</summary>
-        private ClosedValueMember? ParseMember =>
-            model.Members.Count == 1 && model.Members.First().IsBasicType ? model.Members.First() : null;
+        /// <summary>The key that TryParse, Parse, the conversions and the converters use, or null.</summary>
+        private ClosedValueMember? KeyMember => model.Members.FirstOrDefault(member => member.IsKey);
 
-        /// <summary>The single member that orders the instances, or null.</summary>
-        private ClosedValueMember? OrderMember => ParseMember is { IsOrdered: true } member ? member : null;
+        /// <summary>The key when it can order the instances, or null.</summary>
+        private ClosedValueMember? OrderMember => KeyMember is { IsOrdered: true } member ? member : null;
 
         private string NotNullWhenTrue => model.SupportsNullable && model.HasNotNullWhenAttribute && !model.IsValueType
             ? "[global::System.Diagnostics.CodeAnalysis.NotNullWhen(true)] "
@@ -59,12 +58,12 @@ namespace ClosedValues
                 OpenBlock();
             }
 
-            if (model.Converters.TypeConverterAttribute)
+            if (model.WritesTypeConverterAttribute)
             {
                 AppendLine($"[global::System.ComponentModel.TypeConverter(typeof({Type}.ClosedValueTypeConverter))]");
             }
 
-            if (model.Converters.JsonConverterAttribute)
+            if (model.WritesJsonConverterAttribute)
             {
                 AppendLine($"[global::System.Text.Json.Serialization.JsonConverter(typeof({Type}.ClosedValueJsonConverter))]");
             }
@@ -76,12 +75,17 @@ namespace ClosedValues
             WriteFromName();
             WriteTryParse();
             WriteMatch();
+            WriteSwitch();
+            WriteMap();
+            WriteMatchWithState();
             WriteEquality();
             WriteComparison();
             WriteConversions();
             WriteToString();
             WriteTypeConverter();
             WriteJsonConverter();
+            WriteParsable();
+            WriteEfCoreConverter();
             CloseBlock();
 
             if (hasNamespace)
@@ -101,8 +105,15 @@ namespace ClosedValues
             }
 
             string parameters = string.Join(", ", model.Members.Select(member => $"{member.Type} {Parameter(member.Name)}"));
+            string references = string.Join(", ", model.Members.Select(member => $"ref {member.Type} {Parameter(member.Name)}"));
+            string arguments = string.Join(", ", model.Members.Select(member => $"ref {Parameter(member.Name)}"));
+
+            AppendLine("/// <summary>Implement this partial method to check or change the arguments of every instance. Without a body, the call compiles away.</summary>");
+            AppendLine($"static partial void {ClosedValueNames.ValidationMethodName}({references});");
+            AppendLine();
             AppendLine($"private {Type}({parameters})");
             OpenBlock();
+            AppendLine($"{ClosedValueNames.ValidationMethodName}({arguments});");
             foreach (ClosedValueMember member in model.Members)
             {
                 AppendLine($"this.{Identifier(member.Name)} = {Parameter(member.Name)};");
@@ -136,6 +147,27 @@ namespace ClosedValues
             AppendLine("/// <summary>Finds the instance with the name <paramref name=\"name\"/>, compared with <paramref name=\"comparison\"/>.</summary>");
             AppendLine($"public static bool TryFromName(string{Nullable} name, global::System.StringComparison comparison, {result})");
             OpenBlock();
+            if (model.Instances.Count > 0)
+            {
+                AppendLine("if (comparison == global::System.StringComparison.Ordinal)");
+                OpenBlock();
+                AppendLine("switch (name)");
+                OpenBlock();
+                foreach (string instance in model.Instances)
+                {
+                    AppendLine($"case \"{instance}\":");
+                    AppendLine($"    result = {Identifier(instance)};");
+                    AppendLine("    return true;");
+                }
+
+                CloseBlock();
+                AppendLine();
+                AppendLine($"result = {NoInstance};");
+                AppendLine("return false;");
+                CloseBlock();
+                AppendLine();
+            }
+
             foreach (string instance in model.Instances)
             {
                 AppendLine($"if (string.Equals(name, \"{instance}\", comparison))");
@@ -168,7 +200,7 @@ namespace ClosedValues
 
         private void WriteTryParse()
         {
-            if (ParseMember is not ClosedValueMember member)
+            if (KeyMember is not ClosedValueMember member)
             {
                 return;
             }
@@ -248,18 +280,7 @@ namespace ClosedValues
             CloseBlock();
             AppendLine();
 
-            // The fallback reads like the default arm of a switch. An instance named Default already has that
-            // parameter name, so the fallback becomes a discard, with more underscores as needed.
-            string fallback = "@default";
-            if (model.Instances.Any(instance => Parameter(instance) == fallback))
-            {
-                fallback = "_";
-                while (model.Instances.Any(instance => Parameter(instance) == fallback))
-                {
-                    fallback += "_";
-                }
-            }
-
+            string fallback = Fallback;
             string optional = string.Join(", ", model.Instances.Select(instance => $"global::System.Func<TResult>{Nullable} {Parameter(instance)} = null"));
             AppendLine($"/// <summary>Calls the function that belongs to this instance, or <paramref name=\"{fallback.TrimStart('@')}\"/> when no function is given for it.</summary>");
             AppendLine($"public TResult Match<TResult>(global::System.Func<TResult> {fallback}, {optional})");
@@ -270,6 +291,105 @@ namespace ClosedValues
             }
 
             AppendLine($"return {fallback}();");
+            CloseBlock();
+            AppendLine();
+        }
+
+        /// <summary>
+        /// The name of the fallback parameter. It reads like the default arm of a switch. An instance named Default
+        /// already has that parameter name, so the fallback becomes a discard, with more underscores as needed.
+        /// </summary>
+        private string Fallback => FreeParameterName("@default", "_");
+
+        private string FreeParameterName(string preferred, string alternative)
+        {
+            string name = preferred;
+            if (model.Instances.Any(instance => Parameter(instance) == name))
+            {
+                name = alternative;
+                while (model.Instances.Any(instance => Parameter(instance) == name))
+                {
+                    name = "_" + name;
+                }
+            }
+
+            return name;
+        }
+
+        private void WriteSwitch()
+        {
+            if (model.Instances.Count == 0)
+            {
+                return;
+            }
+
+            string fallback = Fallback;
+            string parameters = string.Join(", ", model.Instances.Select(instance => $"global::System.Action {Parameter(instance)}"));
+            AppendLine("/// <summary>Runs the action that belongs to this instance. A new instance adds a parameter, so every call site must handle it.</summary>");
+            AppendLine($"public void Switch({parameters})");
+            OpenBlock();
+            foreach (string instance in model.Instances)
+            {
+                AppendLine($"if ({IsInstance(instance)}) {{ {Parameter(instance)}(); return; }}");
+            }
+
+            AppendLine($"throw new global::System.InvalidOperationException(\"{model.TypeName} has no instance that matches \" + this + \".\");");
+            CloseBlock();
+            AppendLine();
+
+            string optional = string.Join(", ", model.Instances.Select(instance => $"global::System.Action{Nullable} {Parameter(instance)} = null"));
+            AppendLine($"/// <summary>Runs the action that belongs to this instance, or <paramref name=\"{fallback.TrimStart('@')}\"/> when no action is given for it.</summary>");
+            AppendLine($"public void Switch(global::System.Action {fallback}, {optional})");
+            OpenBlock();
+            foreach (string instance in model.Instances)
+            {
+                AppendLine($"if ({IsInstance(instance)}) {{ ({Parameter(instance)} ?? {fallback})(); return; }}");
+            }
+
+            AppendLine($"{fallback}();");
+            CloseBlock();
+            AppendLine();
+        }
+
+        private void WriteMap()
+        {
+            if (model.Instances.Count == 0)
+            {
+                return;
+            }
+
+            string parameters = string.Join(", ", model.Instances.Select(instance => $"TResult {Parameter(instance)}"));
+            AppendLine("/// <summary>Returns the value that belongs to this instance. A new instance adds a parameter, so every call site must handle it.</summary>");
+            AppendLine($"public TResult Map<TResult>({parameters})");
+            OpenBlock();
+            foreach (string instance in model.Instances)
+            {
+                AppendLine($"if ({IsInstance(instance)}) return {Parameter(instance)};");
+            }
+
+            AppendLine($"throw new global::System.InvalidOperationException(\"{model.TypeName} has no instance that matches \" + this + \".\");");
+            CloseBlock();
+            AppendLine();
+        }
+
+        private void WriteMatchWithState()
+        {
+            if (model.Instances.Count == 0)
+            {
+                return;
+            }
+
+            string state = FreeParameterName("state", "state");
+            string parameters = string.Join(", ", model.Instances.Select(instance => $"global::System.Func<TState, TResult> {Parameter(instance)}"));
+            AppendLine($"/// <summary>Calls the function that belongs to this instance with <paramref name=\"{state}\"/>, so the functions can be static lambdas without captures.</summary>");
+            AppendLine($"public TResult Match<TState, TResult>(TState {state}, {parameters})");
+            OpenBlock();
+            foreach (string instance in model.Instances)
+            {
+                AppendLine($"if ({IsInstance(instance)}) return {Parameter(instance)}({state});");
+            }
+
+            AppendLine($"throw new global::System.InvalidOperationException(\"{model.TypeName} has no instance that matches \" + this + \".\");");
             CloseBlock();
             AppendLine();
         }
@@ -293,6 +413,11 @@ namespace ClosedValues
             if (OrderMember is not null)
             {
                 interfaces.Add($"global::System.IComparable<{Type}>");
+            }
+
+            if (model.WritesParsable)
+            {
+                interfaces.Add($"global::System.IParsable<{Type}>");
             }
 
             return interfaces.Count == 0 ? string.Empty : " : " + string.Join(", ", interfaces);
@@ -323,7 +448,7 @@ namespace ClosedValues
 
         private void WriteConversions()
         {
-            if (ParseMember is not ClosedValueMember member)
+            if (KeyMember is not ClosedValueMember member)
             {
                 return;
             }
@@ -369,9 +494,9 @@ namespace ClosedValues
             }
             else
             {
-                AppendLine("if (other is null) return false;");
-                AppendLine("if (object.ReferenceEquals(this, other)) return true;");
-                AppendLine($"return {(model.Members.Count == 0 ? "false" : memberComparison)};");
+                // The instances are the only objects of a class, so an instance equals only itself. A member such as a
+                // delegate then takes no part in equality, and Equals agrees with Match.
+                AppendLine("return object.ReferenceEquals(this, other);");
             }
 
             CloseBlock();
@@ -380,15 +505,19 @@ namespace ClosedValues
             AppendLine("/// <inheritdoc />");
             AppendLine(model.IsValueType
                 ? $"public override bool Equals(object{Nullable} obj) => obj is {Type} other && Equals(other);"
-                : $"public override bool Equals(object{Nullable} obj) => Equals(obj as {Type});");
+                : $"public override bool Equals(object{Nullable} obj) => object.ReferenceEquals(this, obj);");
             AppendLine();
 
             AppendLine("/// <inheritdoc />");
             AppendLine("public override int GetHashCode()");
             OpenBlock();
-            if (model.Members.Count == 0)
+            if (!model.IsValueType)
             {
-                AppendLine(model.IsValueType ? "return 0;" : "return global::System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);");
+                AppendLine("return global::System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);");
+            }
+            else if (model.Members.Count == 0)
+            {
+                AppendLine("return 0;");
             }
             else
             {
@@ -410,7 +539,7 @@ namespace ClosedValues
             AppendLine("/// <summary>Returns whether both instances are equal.</summary>");
             AppendLine(model.IsValueType
                 ? $"public static bool operator ==({Type} left, {Type} right) => left.Equals(right);"
-                : $"public static bool operator ==({Type}{Nullable} left, {Type}{Nullable} right) => left is null ? right is null : left.Equals(right);");
+                : $"public static bool operator ==({Type}{Nullable} left, {Type}{Nullable} right) => object.ReferenceEquals(left, right);");
             AppendLine();
             AppendLine("/// <summary>Returns whether both instances differ.</summary>");
             AppendLine($"public static bool operator !=({Type}{InstanceNullable} left, {Type}{InstanceNullable} right) => !(left == right);");
@@ -437,7 +566,7 @@ namespace ClosedValues
         /// The member that converters write: the single basic member, unless it is an enum. Without it, converters
         /// write the field name of the instance.
         /// </summary>
-        private ClosedValueMember? ValueMember => ParseMember is { Kind: not "Enum" } member ? member : null;
+        private ClosedValueMember? ValueMember => KeyMember is { Kind: not "Enum" } member ? member : null;
 
         private const string Invariant = "global::System.Globalization.CultureInfo.InvariantCulture";
 
@@ -561,7 +690,7 @@ namespace ClosedValues
 
         private void WriteJsonConverter()
         {
-            if (!model.Converters.JsonConverter)
+            if (!model.WritesJsonConverter)
             {
                 return;
             }
@@ -652,6 +781,103 @@ namespace ClosedValues
             }
 
             CloseBlock();
+        }
+
+        private void WriteParsable()
+        {
+            if (!model.WritesParsable)
+            {
+                return;
+            }
+
+            // Public, not explicit: ASP.NET Core minimal APIs bind a parameter through a public static TryParse, and
+            // they throw at startup when they find only a non-public one.
+            string provider = $"global::System.IFormatProvider{Nullable} provider";
+            AppendLine();
+            AppendLine("/// <summary>Parses the same text as the type converter: the key, or the field name.</summary>");
+            AppendLine("/// <exception cref=\"global::System.FormatException\">No instance has the text.</exception>");
+            AppendLine($"public static {Type} Parse(string s, {provider})");
+            OpenBlock();
+            AppendLine($"if (ClosedValueTypeConverter.FromText(s, out {Type}{InstanceNullable} result)) return result{Bang};");
+            AppendLine($"throw new global::System.FormatException(\"'\" + s + \"' is not a {model.TypeName}.\");");
+            CloseBlock();
+            AppendLine();
+            AppendLine("/// <summary>Parses the same text as the type converter: the key, or the field name.</summary>");
+            AppendLine($"public static bool TryParse([global::System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string{Nullable} s, {provider}, [global::System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out {Type} result)");
+            OpenBlock();
+            AppendLine($"bool found = ClosedValueTypeConverter.FromText(s, out {Type}{InstanceNullable} value);");
+            AppendLine($"result = value{Bang};");
+            AppendLine("return found;");
+            CloseBlock();
+        }
+
+        private void WriteEfCoreConverter()
+        {
+            if (!model.WritesEfCoreConverter)
+            {
+                return;
+            }
+
+            // The key is stored as it is, so the column keeps its type. Without a key, the field name is stored.
+            string provider;
+            string toProvider;
+            string fromProvider;
+            if (KeyMember is ClosedValueMember key)
+            {
+                provider = key.IsString ? key.Type.TrimEnd('?') : key.Type;
+                toProvider = $"value => value.{Identifier(key.Name)}";
+                fromProvider = $"key => {Type}.Parse(key)";
+            }
+            else
+            {
+                provider = "string";
+                toProvider = $"value => ClosedValueTypeConverter.ToText(value){Bang}";
+                fromProvider = $"name => {Type}.FromName(name)";
+            }
+
+            string form = KeyMember is ClosedValueMember stored ? $"the {stored.Name}" : "the field name";
+            AppendLine();
+            AppendLine($"/// <summary>Stores a {model.TypeName} in an EF Core column as {form} of the instance.</summary>");
+            AppendLine($"public sealed class ClosedValueEfCoreConverter : global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<{Type}, {provider}>");
+            OpenBlock();
+            AppendLine("/// <summary>Creates the converter.</summary>");
+            AppendLine("public ClosedValueEfCoreConverter()");
+            AppendLine($"    : base({toProvider}, {fromProvider})");
+            OpenBlock();
+            CloseBlock();
+            CloseBlock();
+        }
+
+        /// <summary>
+        /// Writes one extension method for the assembly that registers the EF Core converter of every closed value
+        /// type. The class is embedded, so other assemblies, even with InternalsVisibleTo, do not see a second copy.
+        /// </summary>
+        public static string WriteModelConfiguration(System.Collections.Generic.IEnumerable<ClosedValueModel> models)
+        {
+            ClosedValueSourceWriter writer = new(null!);
+            writer.AppendLine("// <auto-generated/>");
+            writer.AppendLine("#nullable enable");
+            writer.AppendLine();
+            writer.AppendLine("namespace ClosedValues");
+            writer.OpenBlock();
+            writer.AppendLine("/// <summary>Registers the EF Core converters of the closed value types in this assembly.</summary>");
+            writer.AppendLine("[global::Microsoft.CodeAnalysis.EmbeddedAttribute]");
+            writer.AppendLine("internal static class ClosedValuesModelConfigurationBuilderExtensions");
+            writer.OpenBlock();
+            writer.AppendLine("/// <summary>Stores every closed value type of this assembly with its generated converter. Call this in ConfigureConventions.</summary>");
+            writer.AppendLine("public static global::Microsoft.EntityFrameworkCore.ModelConfigurationBuilder ConfigureClosedValues(this global::Microsoft.EntityFrameworkCore.ModelConfigurationBuilder builder)");
+            writer.OpenBlock();
+            foreach (ClosedValueModel model in models.OrderBy(model => model.HintName, System.StringComparer.Ordinal))
+            {
+                string type = "global::" + (model.Namespace.Length > 0 ? model.Namespace + "." : string.Empty) + writer.Identifier(model.TypeName);
+                writer.AppendLine($"builder.Properties<{type}>().HaveConversion<{type}.ClosedValueEfCoreConverter>();");
+            }
+
+            writer.AppendLine("return builder;");
+            writer.CloseBlock();
+            writer.CloseBlock();
+            writer.CloseBlock();
+            return writer.builder.ToString();
         }
 
         private string Identifier(string name) =>

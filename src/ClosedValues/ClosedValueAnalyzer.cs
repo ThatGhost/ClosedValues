@@ -27,6 +27,8 @@ namespace ClosedValues
             ClosedValueDiagnostics.MutableState,
             ClosedValueDiagnostics.ReservedMemberName,
             ClosedValueDiagnostics.DefaultValue,
+            ClosedValueDiagnostics.InvalidKey,
+            ClosedValueDiagnostics.DuplicateKey,
             ClosedValueDiagnostics.UnsupportedShape);
 
         /// <inheritdoc />
@@ -37,6 +39,7 @@ namespace ClosedValues
             context.RegisterSymbolAction(AnalyzeType, SymbolKind.NamedType);
             context.RegisterOperationAction(AnalyzeObjectCreation, OperationKind.ObjectCreation);
             context.RegisterOperationAction(AnalyzeDefaultValue, OperationKind.DefaultValue);
+            context.RegisterSymbolStartAction(StartDuplicateKeys, SymbolKind.NamedType);
         }
 
         private void AnalyzeType(SymbolAnalysisContext context)
@@ -66,11 +69,95 @@ namespace ClosedValues
 
             ReportMutableState(context, type);
             ReportReservedMemberNames(context, type);
+            ReportInvalidKeys(context, type);
+        }
+
+        private void ReportInvalidKeys(SymbolAnalysisContext context, INamedTypeSymbol type)
+        {
+            IPropertySymbol[] marked = type.GetMembers().OfType<IPropertySymbol>().Where(symbols.IsMarkedKey).ToArray();
+            ISet<IPropertySymbol> state = new HashSet<IPropertySymbol>(symbols.GetStateProperties(type), SymbolEqualityComparer.Default);
+            foreach (IPropertySymbol property in marked)
+            {
+                bool isValid = marked.Length == 1 && state.Contains(property) && symbols.IsBasicType(property.Type);
+                if (!isValid)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(ClosedValueDiagnostics.InvalidKey, property.Locations[0], property.Name, type.Name));
+                }
+            }
+        }
+
+        private void StartDuplicateKeys(SymbolStartAnalysisContext context)
+        {
+            if (context.Symbol is not INamedTypeSymbol type
+                || !symbols.IsClosedValue(type)
+                || !symbols.HasSupportedShape(type)
+                || symbols.GetKeyProperty(type) is not IPropertySymbol key)
+            {
+                return;
+            }
+
+            int keyOrdinal = symbols.GetStateProperties(type).ToList().FindIndex(property => SymbolEqualityComparer.Default.Equals(property, key));
+            List<(IFieldSymbol Field, object? Key)> keys = [];
+
+            context.RegisterOperationAction(
+                operationContext =>
+                {
+                    IFieldInitializerOperation initializer = (IFieldInitializerOperation)operationContext.Operation;
+                    IOperation value = initializer.Value;
+                    while (value is IConversionOperation conversion)
+                    {
+                        value = conversion.Operand;
+                    }
+
+                    // Only a constant argument can be compared before the program runs.
+                    IArgumentOperation? argument = (value as IObjectCreationOperation)?.Arguments
+                        .FirstOrDefault(each => each.Parameter?.Ordinal == keyOrdinal);
+                    if (argument is null || !argument.Value.ConstantValue.HasValue)
+                    {
+                        return;
+                    }
+
+                    foreach (IFieldSymbol field in initializer.InitializedFields.Where(field => SymbolEqualityComparer.Default.Equals(field.Type, type)))
+                    {
+                        lock (keys)
+                        {
+                            keys.Add((field, argument.Value.ConstantValue.Value));
+                        }
+                    }
+                },
+                OperationKind.FieldInitializer);
+
+            context.RegisterSymbolEndAction(endContext =>
+            {
+                // Report in declaration order, against the first instance with the same key.
+                IFieldSymbol[] order = symbols.GetInstances(type).ToArray();
+                Dictionary<object, IFieldSymbol> seen = [];
+                IFieldSymbol? seenNull = null;
+                foreach ((IFieldSymbol field, object? value) in keys.OrderBy(each => System.Array.IndexOf(order, each.Field)))
+                {
+                    IFieldSymbol? first = null;
+                    if (value is null)
+                    {
+                        first = seenNull;
+                        seenNull ??= field;
+                    }
+                    else if (!seen.TryGetValue(value, out first))
+                    {
+                        seen.Add(value, field);
+                    }
+
+                    if (first is not null)
+                    {
+                        endContext.ReportDiagnostic(Diagnostic.Create(ClosedValueDiagnostics.DuplicateKey, field.Locations[0], field.Name, key.Name, first.Name));
+                    }
+                }
+            });
         }
 
         private void ReportReservedMemberNames(SymbolAnalysisContext context, INamedTypeSymbol type)
         {
-            ISet<string> generatedNames = symbols.GetGeneratedMemberNames(type);
+            ClosedValueSwitches projectSwitches = symbols.ReadProjectSwitches(context.Options.AnalyzerConfigOptionsProvider.GlobalOptions);
+            ISet<string> generatedNames = symbols.GetGeneratedMemberNames(type, context.Compilation, projectSwitches);
             foreach (ISymbol member in type.GetMembers().Where(member => !member.IsImplicitlyDeclared && generatedNames.Contains(member.Name) && IsUserCode(member)))
             {
                 context.ReportDiagnostic(Diagnostic.Create(ClosedValueDiagnostics.ReservedMemberName, member.Locations[0], member.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));

@@ -4,11 +4,13 @@ using System.Globalization;
 namespace ClosedValues.Examples.Currencies
 {
     /// <summary>
-    /// A currency with its ISO 4217 code and the number of decimals it uses. Two members, both part of equality.
+    /// A currency with its ISO 4217 code and the number of decimals it uses. The code is the key, so Parse, the
+    /// conversions and JSON use it.
     /// </summary>
     [ClosedValue]
     public sealed partial class Currency
     {
+        [ClosedValueKey]
         public string Code { get; }
 
         public int DecimalPlaces { get; }

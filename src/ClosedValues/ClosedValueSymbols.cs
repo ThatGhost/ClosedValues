@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace ClosedValues
 {
@@ -41,27 +43,83 @@ namespace ClosedValues
                 .OfType<IFieldSymbol>()
                 .Where(field => field.IsStatic && field.IsReadOnly && !field.IsImplicitlyDeclared && SymbolEqualityComparer.Default.Equals(field.Type, type));
 
-        public bool HasTryParse(INamedTypeSymbol type)
+        public bool IsMarkedKey(IPropertySymbol property) =>
+            property.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ClosedValueNames.KeyAttributeMetadataName);
+
+        /// <summary>
+        /// Returns the key: the one state property marked with [ClosedValueKey], or without a marker the single state
+        /// property. The key must have a basic type; otherwise the type has no key.
+        /// </summary>
+        public IPropertySymbol? GetKeyProperty(INamedTypeSymbol type)
         {
             IPropertySymbol[] properties = GetStateProperties(type).ToArray();
-            return properties.Length == 1 && IsBasicType(properties[0].Type);
+            IPropertySymbol[] marked = properties.Where(IsMarkedKey).ToArray();
+            IPropertySymbol? key = marked.Length switch
+            {
+                0 => properties.Length == 1 ? properties[0] : null,
+                1 => marked[0],
+                _ => null,
+            };
+
+            return key is not null && IsBasicType(key.Type) ? key : null;
         }
+
+        public bool HasTryParse(INamedTypeSymbol type) => GetKeyProperty(type) is not null;
+
+        /// <summary>
+        /// Whether the generator implements IParsable&lt;T&gt;: it needs static abstract interface members (C# 11), the
+        /// interface and its nullable attributes, and the type converter that reads the text.
+        /// </summary>
+        /// <summary>Reads the switches that are set on the [ClosedValue] attribute of the type.</summary>
+        public ClosedValueSwitches ReadTypeSwitches(INamedTypeSymbol type)
+        {
+            AttributeData? attribute = type.GetAttributes()
+                .FirstOrDefault(each => each.AttributeClass?.ToDisplayString() == ClosedValueNames.AttributeMetadataName);
+            bool? Read(string name)
+            {
+                foreach (KeyValuePair<string, TypedConstant> argument in attribute?.NamedArguments ?? [])
+                {
+                    if (argument.Key == name && argument.Value.Value is bool value)
+                    {
+                        return value;
+                    }
+                }
+
+                return null;
+            }
+
+            return new ClosedValueSwitches(Read("Json"), Read("TypeConverter"), Read("Parsable"), Read("EfCore"));
+        }
+
+        /// <summary>Reads the MSBuild properties ClosedValuesJson, ClosedValuesTypeConverter, ClosedValuesParsable and ClosedValuesEfCore.</summary>
+        public ClosedValueSwitches ReadProjectSwitches(AnalyzerConfigOptions options)
+        {
+            bool? Read(string name) =>
+                options.TryGetValue("build_property.ClosedValues" + name, out string? text) && bool.TryParse(text?.Trim(), out bool value)
+                    ? value
+                    : null;
+
+            return new ClosedValueSwitches(Read("Json"), Read("TypeConverter"), Read("Parsable"), Read("EfCore"));
+        }
+
+        public bool IsParsable(Compilation compilation) =>
+            compilation is CSharpCompilation { LanguageVersion: >= LanguageVersion.CSharp11 }
+            && compilation.GetTypeByMetadataName("System.ComponentModel.TypeConverter") is not null
+            && compilation.GetTypeByMetadataName("System.IParsable`1") is not null
+            && compilation.GetTypeByMetadataName("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute") is not null;
 
         /// <summary>Whether the instances can be ordered by a single member of this type: a basic type other than bool or string.</summary>
         public bool IsOrderedType(ITypeSymbol type) =>
             IsBasicType(type) && type.SpecialType is not (SpecialType.System_Boolean or SpecialType.System_String);
 
-        public bool HasOrdering(INamedTypeSymbol type)
-        {
-            IPropertySymbol[] properties = GetStateProperties(type).ToArray();
-            return properties.Length == 1 && IsOrderedType(properties[0].Type);
-        }
+        public bool HasOrdering(INamedTypeSymbol type) => GetKeyProperty(type) is IPropertySymbol key && IsOrderedType(key.Type);
 
         public bool DeclaresToString(INamedTypeSymbol type) =>
             type.GetMembers(nameof(ToString)).OfType<IMethodSymbol>().Any(method => method.Parameters.Length == 0 && !method.IsImplicitlyDeclared && !IsGeneratedOnly(method));
 
-        public ISet<string> GetGeneratedMemberNames(INamedTypeSymbol type)
+        public ISet<string> GetGeneratedMemberNames(INamedTypeSymbol type, Compilation compilation, ClosedValueSwitches projectSwitches)
         {
+            bool isParsable = IsParsable(compilation) && ReadTypeSwitches(type).Over(projectSwitches).Parsable != false;
             HashSet<string> names = new(StringComparer.Ordinal)
             {
                 "All",
@@ -70,6 +128,7 @@ namespace ClosedValues
                 "TryFromName",
                 "ClosedValueTypeConverter",
                 "ClosedValueJsonConverter",
+                "ClosedValueEfCoreConverter",
             };
 
             if (!type.IsRecord)
@@ -83,12 +142,18 @@ namespace ClosedValues
             if (GetInstances(type).Any())
             {
                 names.Add("Match");
+                names.Add("Switch");
+                names.Add("Map");
+            }
+
+            if (HasTryParse(type) || isParsable)
+            {
+                names.Add("TryParse");
+                names.Add("Parse");
             }
 
             if (HasTryParse(type))
             {
-                names.Add("TryParse");
-                names.Add("Parse");
                 names.Add("op_Implicit");
                 names.Add("op_Explicit");
             }

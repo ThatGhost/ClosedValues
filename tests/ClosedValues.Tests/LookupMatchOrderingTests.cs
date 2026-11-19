@@ -238,7 +238,7 @@ namespace ClosedValues.Tests
         }
 
         [Fact]
-        public async Task ParseOnATypeWithSeveralMembers_HasNoCV0008()
+        public async Task ParseOnATypeWithSeveralMembers_ReportsCV0008BecauseOfIParsable()
         {
             ImmutableArray<Diagnostic> diagnostics = await CompileAsync("""
                 using ClosedValues;
@@ -253,7 +253,7 @@ namespace ClosedValues.Tests
                 }
                 """);
 
-            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "CV0008");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "CV0008");
         }
 
         private Task<ImmutableArray<Diagnostic>> CompileAsync(string source) =>

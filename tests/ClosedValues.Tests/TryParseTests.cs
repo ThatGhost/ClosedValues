@@ -48,7 +48,7 @@ namespace ClosedValues.Tests
         [Theory]
         [InlineData("public string Name { get; } public int Order { get; }")]
         [InlineData("public System.Guid Id { get; }")]
-        public async Task OtherShapes_HaveNoTryParse(string members)
+        public async Task OtherShapes_HaveNoKeyTryParse(string members)
         {
             ImmutableArray<Diagnostic> diagnostics = await compiler.CompileAsync($$"""
                 using ClosedValues;
@@ -65,7 +65,8 @@ namespace ClosedValues.Tests
                 }
                 """, TestContext.Current.CancellationToken);
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "CS0117");
+            // Only the IParsable overload with a format provider exists, so the key-style call does not compile.
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id.StartsWith("CS", StringComparison.Ordinal));
         }
     }
 }

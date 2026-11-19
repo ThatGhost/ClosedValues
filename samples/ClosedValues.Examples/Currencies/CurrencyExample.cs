@@ -3,7 +3,7 @@ using System;
 namespace ClosedValues.Examples.Currencies
 {
     /// <summary>
-    /// Shows a closed value with two members: behaviour that reads both, and equality across them.
+    /// Shows a closed value with two members and a key: behaviour that reads both, and parsing by the key.
     /// </summary>
     public sealed class CurrencyExample
     {
@@ -17,8 +17,8 @@ namespace ClosedValues.Examples.Currencies
                 Console.WriteLine($"   {currency.Code} ({currency.DecimalPlaces} decimals): {currency.Format(amount)}");
             }
 
-            Currency fromSettings = Currency.All[1];
-            Console.WriteLine($"   The second currency equals UsDollar: {fromSettings == Currency.UsDollar}.");
+            Currency fromSettings = Currency.Parse("USD");
+            Console.WriteLine($"   Parse(\"USD\") is UsDollar: {fromSettings == Currency.UsDollar}. As JSON: {System.Text.Json.JsonSerializer.Serialize(Currency.JapaneseYen)}.");
             Console.WriteLine();
         }
     }

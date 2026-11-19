@@ -84,6 +84,24 @@ namespace ClosedValues
             isEnabledByDefault: true,
             helpLinkUri: HelpLink("CV0006"));
 
+        public static readonly DiagnosticDescriptor InvalidKey = new(
+            "CV0009",
+            "Closed value key is invalid",
+            "'{0}' cannot be the key of '{1}'. Mark one get-only auto-property of a basic type with [ClosedValueKey].",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            helpLinkUri: HelpLink("CV0009"));
+
+        public static readonly DiagnosticDescriptor DuplicateKey = new(
+            "CV0010",
+            "Closed value instances share a key",
+            "'{0}' has the same {1} as '{2}'. Give every instance its own key.",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            helpLinkUri: HelpLink("CV0010"));
+
         public static readonly DiagnosticDescriptor UnsupportedShape = new(
             "CV0007",
             "Closed value has an unsupported shape",

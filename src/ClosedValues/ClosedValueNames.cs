@@ -7,6 +7,12 @@ namespace ClosedValues
     {
         public const string AttributeMetadataName = "ClosedValues.ClosedValueAttribute";
 
+        public const string KeyAttributeMetadataName = "ClosedValues.ClosedValueKeyAttribute";
+
+        public const string ValidationMethodName = "ValidateConstructorArguments";
+
+        public const string ModelConfigurationHintName = "ClosedValuesModelConfiguration" + GeneratedFileSuffix;
+
         public const string AttributeHintName = "ClosedValueAttribute.g.cs";
 
         public const string GeneratedFileSuffix = ".ClosedValue.g.cs";
@@ -21,6 +27,28 @@ namespace ClosedValues
     [global::System.Diagnostics.Conditional(""CLOSEDVALUES_USAGES"")]
     [global::Microsoft.CodeAnalysis.EmbeddedAttribute]
     internal sealed class ClosedValueAttribute : global::System.Attribute
+    {
+        /// <summary>Whether to generate the System.Text.Json converter. Overrides the MSBuild property ClosedValuesJson.</summary>
+        public bool Json { get; set; } = true;
+
+        /// <summary>Whether to apply the type converter with [TypeConverter]. Overrides the MSBuild property ClosedValuesTypeConverter.</summary>
+        public bool TypeConverter { get; set; } = true;
+
+        /// <summary>Whether to implement IParsable&lt;T&gt;. Overrides the MSBuild property ClosedValuesParsable.</summary>
+        public bool Parsable { get; set; } = true;
+
+        /// <summary>Whether to generate the EF Core value converter. Overrides the MSBuild property ClosedValuesEfCore.</summary>
+        public bool EfCore { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Marks the get-only auto-property that identifies each instance of a closed value. TryParse, Parse, the
+    /// conversions, the ordering and the converters use this member.
+    /// </summary>
+    [global::System.AttributeUsage(global::System.AttributeTargets.Property, Inherited = false, AllowMultiple = false)]
+    [global::System.Diagnostics.Conditional(""CLOSEDVALUES_USAGES"")]
+    [global::Microsoft.CodeAnalysis.EmbeddedAttribute]
+    internal sealed class ClosedValueKeyAttribute : global::System.Attribute
     {
     }
 }

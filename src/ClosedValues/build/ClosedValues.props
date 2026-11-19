@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    Makes the ClosedValues switches visible to the generator and the analyzer. Set any of them to false in the
+    project file to turn that integration off for every closed value type. A setting on [ClosedValue] wins.
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="ClosedValuesJson" />
+    <CompilerVisibleProperty Include="ClosedValuesTypeConverter" />
+    <CompilerVisibleProperty Include="ClosedValuesParsable" />
+    <CompilerVisibleProperty Include="ClosedValuesEfCore" />
+  </ItemGroup>
+</Project>

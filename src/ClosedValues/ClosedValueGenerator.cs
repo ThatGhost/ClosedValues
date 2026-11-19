@@ -28,13 +28,27 @@ namespace ClosedValues
                 output.AddSource(ClosedValueNames.AttributeHintName, ClosedValueNames.AttributeSource);
             });
 
+            IncrementalValueProvider<ClosedValueSwitches> projectSwitches = context.AnalyzerConfigOptionsProvider
+                .Select((options, _) => symbols.ReadProjectSwitches(options.GlobalOptions));
+
             IncrementalValuesProvider<ClosedValueModel> models = context.SyntaxProvider
                 .ForAttributeWithMetadataName(ClosedValueNames.AttributeMetadataName, IsPartialType, CreateModel)
                 .Where(model => model is not null)
-                .Select((model, _) => model!);
+                .Combine(projectSwitches)
+                .Select((pair, _) => pair.Left! with { ProjectSwitches = pair.Right });
 
             context.RegisterSourceOutput(models, (output, model) =>
                 output.AddSource(model.HintName, new ClosedValueSourceWriter(model).Write()));
+
+            // One registration method per assembly for every EF Core converter.
+            context.RegisterSourceOutput(models.Collect(), (output, all) =>
+            {
+                ClosedValueModel[] registered = all.Where(model => model.WritesEfCoreConverter && model.Converters.EfCoreConventions).ToArray();
+                if (registered.Length > 0)
+                {
+                    output.AddSource(ClosedValueNames.ModelConfigurationHintName, ClosedValueSourceWriter.WriteModelConfiguration(registered));
+                }
+            });
         }
 
         private bool IsPartialType(SyntaxNode node, CancellationToken cancellationToken) =>
@@ -47,6 +61,7 @@ namespace ClosedValues
                 return null;
             }
 
+            IPropertySymbol? key = symbols.GetKeyProperty(type);
             ImmutableArray<ClosedValueMember> members = symbols.GetStateProperties(type)
                 .Select(property => new ClosedValueMember(
                     property.Name,
@@ -54,7 +69,8 @@ namespace ClosedValues
                     property.Type.SpecialType == SpecialType.System_String,
                     symbols.IsBasicType(property.Type),
                     symbols.IsOrderedType(property.Type),
-                    property.Type.TypeKind == TypeKind.Enum ? "Enum" : property.Type.SpecialType.ToString().Replace("System_", string.Empty)))
+                    property.Type.TypeKind == TypeKind.Enum ? "Enum" : property.Type.SpecialType.ToString().Replace("System_", string.Empty),
+                    SymbolEqualityComparer.Default.Equals(property, key)))
                 .ToImmutableArray();
 
             ImmutableArray<string> instances = symbols.GetInstances(type)
@@ -69,10 +85,14 @@ namespace ClosedValues
                 typeConverter && !symbols.HasAttribute(type, "System.ComponentModel.TypeConverterAttribute"),
                 typeConverter && jsonConverter is not null,
                 typeConverter && jsonConverter is not null && !symbols.HasAttribute(type, "System.Text.Json.Serialization.JsonConverterAttribute"),
-                jsonConverter is not null && jsonConverter.GetMembers("ReadAsPropertyName").Any());
+                jsonConverter is not null && jsonConverter.GetMembers("ReadAsPropertyName").Any(),
+                typeConverter && compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter`2") is not null,
+                compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.ModelConfigurationBuilder") is not null);
 
-            bool supportsNullable = compilation is CSharpCompilation csharpCompilation
-                && csharpCompilation.LanguageVersion >= LanguageVersion.CSharp8;
+            LanguageVersion languageVersion = compilation is CSharpCompilation csharpCompilation ? csharpCompilation.LanguageVersion : LanguageVersion.Default;
+            bool supportsNullable = languageVersion >= LanguageVersion.CSharp8;
+
+            bool isParsable = symbols.IsParsable(compilation);
 
             return new ClosedValueModel(
                 type.ContainingNamespace.IsGlobalNamespace ? string.Empty : type.ContainingNamespace.ToDisplayString(),
@@ -82,7 +102,10 @@ namespace ClosedValues
                 supportsNullable,
                 compilation.GetTypeByMetadataName("System.Diagnostics.CodeAnalysis.NotNullWhenAttribute") is not null,
                 symbols.DeclaresToString(type),
+                isParsable,
                 converters,
+                symbols.ReadTypeSwitches(type),
+                ClosedValueSwitches.None,
                 new EquatableArray<ClosedValueMember>(members),
                 new EquatableArray<string>(instances));
         }

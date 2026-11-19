@@ -15,3 +15,5 @@ CV0005 | ClosedValues | Error | ClosedValueAnalyzer
 CV0006 | ClosedValues | Error | ClosedValueAnalyzer
 CV0007 | ClosedValues | Error | ClosedValueAnalyzer
 CV0008 | ClosedValues | Error | ClosedValueAnalyzer
+CV0009 | ClosedValues | Error | ClosedValueAnalyzer
+CV0010 | ClosedValues | Error | ClosedValueAnalyzer
