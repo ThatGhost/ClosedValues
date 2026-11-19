@@ -39,16 +39,6 @@ namespace ClosedValues
 
             context.RegisterSourceOutput(models, (output, model) =>
                 output.AddSource(model.HintName, new ClosedValueSourceWriter(model).Write()));
-
-            // One registration method per assembly for every EF Core converter.
-            context.RegisterSourceOutput(models.Collect(), (output, all) =>
-            {
-                ClosedValueModel[] registered = all.Where(model => model.WritesEfCoreConverter && model.Converters.EfCoreConventions).ToArray();
-                if (registered.Length > 0)
-                {
-                    output.AddSource(ClosedValueNames.ModelConfigurationHintName, ClosedValueSourceWriter.WriteModelConfiguration(registered));
-                }
-            });
         }
 
         private bool IsPartialType(SyntaxNode node, CancellationToken cancellationToken) =>
@@ -85,9 +75,7 @@ namespace ClosedValues
                 typeConverter && !symbols.HasAttribute(type, "System.ComponentModel.TypeConverterAttribute"),
                 typeConverter && jsonConverter is not null,
                 typeConverter && jsonConverter is not null && !symbols.HasAttribute(type, "System.Text.Json.Serialization.JsonConverterAttribute"),
-                jsonConverter is not null && jsonConverter.GetMembers("ReadAsPropertyName").Any(),
-                typeConverter && compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter`2") is not null,
-                compilation.GetTypeByMetadataName("Microsoft.EntityFrameworkCore.ModelConfigurationBuilder") is not null);
+                jsonConverter is not null && jsonConverter.GetMembers("ReadAsPropertyName").Any());
 
             LanguageVersion languageVersion = compilation is CSharpCompilation csharpCompilation ? csharpCompilation.LanguageVersion : LanguageVersion.Default;
             bool supportsNullable = languageVersion >= LanguageVersion.CSharp8;

@@ -1,0 +1,9 @@
+<Project>
+  <!--
+    Makes the EF Core switch visible to the generator. Set ClosedValuesEfCore to false in the project file to stop
+    generating converters for every closed value type. [ClosedValue(EfCore = ...)] on a type wins.
+  -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="ClosedValuesEfCore" />
+  </ItemGroup>
+</Project>

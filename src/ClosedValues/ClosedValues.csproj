@@ -7,6 +7,7 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <DevelopmentDependency>true</DevelopmentDependency>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <DebugType>embedded</DebugType>
     <NoWarn>$(NoWarn);NU5128</NoWarn>
   </PropertyGroup>
 

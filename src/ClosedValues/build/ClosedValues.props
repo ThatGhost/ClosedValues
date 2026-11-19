@@ -7,6 +7,5 @@
     <CompilerVisibleProperty Include="ClosedValuesJson" />
     <CompilerVisibleProperty Include="ClosedValuesTypeConverter" />
     <CompilerVisibleProperty Include="ClosedValuesParsable" />
-    <CompilerVisibleProperty Include="ClosedValuesEfCore" />
   </ItemGroup>
 </Project>

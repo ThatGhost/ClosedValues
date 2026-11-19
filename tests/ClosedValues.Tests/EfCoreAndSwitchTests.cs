@@ -170,6 +170,47 @@ namespace ClosedValues.Tests
         }
 
         [Fact]
+        public void MainPackageAlone_WritesNoEfCoreCode()
+        {
+            Compilation generated = compiler.GenerateWithoutEfCore(Source("[ClosedValue]", "object"), TestContext.Current.CancellationToken);
+
+            Assert.Null(generated.GetTypeByMetadataName("Sample+ClosedValueEfCoreConverter"));
+            Assert.DoesNotContain(generated.SyntaxTrees, tree => tree.FilePath.Contains("ClosedValuesModelConfiguration", StringComparison.Ordinal));
+            Assert.Empty(generated.GetDiagnostics(TestContext.Current.CancellationToken).Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));
+        }
+
+        [Fact]
+        public async Task EfCoreGenerator_FindsTheKeyAndTheSwitchWithoutResolvingTheAttributes()
+        {
+            ImmutableArray<Diagnostic> diagnostics = await compiler.CompileAsync(
+                """
+                using ClosedValues;
+
+                [ClosedValues.ClosedValue(EfCore = true)]
+                public readonly partial record struct Grade
+                {
+                    public string Label { get; }
+                    [ClosedValueKey] public int Points { get; }
+                    public static readonly Grade Pass = new("Pass", 1);
+                    public static readonly Grade Fail = new("Fail", 0);
+                    public static int Stored() => new Grade.ClosedValueEfCoreConverter().ConvertToProvider(Pass) is int points ? points : -1;
+                }
+
+                [ClosedValue(EfCore = false)]
+                public sealed partial class Hidden
+                {
+                    public string Name { get; }
+                    public static readonly Hidden First = new("first");
+                    public static System.Type Used() => typeof(Hidden.ClosedValueEfCoreConverter);
+                }
+                """,
+                TestContext.Current.CancellationToken);
+
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Location.GetLineSpan().StartLinePosition.Line < 12);
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "CS0426" && diagnostic.GetMessage().Contains("Hidden", StringComparison.Ordinal));
+        }
+
+        [Fact]
         public async Task ParsableSwitchedOff_FreesTheParseName()
         {
             const string source = """

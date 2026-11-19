@@ -13,8 +13,30 @@ namespace ClosedValues
     /// </summary>
     internal sealed class ClosedValueSymbols
     {
-        public bool IsClosedValue(INamedTypeSymbol type) =>
-            type.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ClosedValueNames.AttributeMetadataName);
+        public bool IsClosedValue(INamedTypeSymbol type) => GetClosedValueAttribute(type) is not null;
+
+        public AttributeData? GetClosedValueAttribute(INamedTypeSymbol type) =>
+            type.GetAttributes().FirstOrDefault(attribute => IsAttribute(attribute, ClosedValueNames.AttributeMetadataName));
+
+        /// <summary>
+        /// Whether the attribute has the metadata name. Another generator cannot see the attribute source that this
+        /// generator adds, so there the attribute class is an error type, and only its name can be compared.
+        /// </summary>
+        public bool IsAttribute(AttributeData attribute, string metadataName)
+        {
+            if (attribute.AttributeClass is not INamedTypeSymbol attributeClass)
+            {
+                return false;
+            }
+
+            if (attributeClass.TypeKind != TypeKind.Error)
+            {
+                return attributeClass.ToDisplayString() == metadataName;
+            }
+
+            string name = metadataName.Substring(metadataName.LastIndexOf('.') + 1);
+            return attributeClass.Name == name || attributeClass.Name + "Attribute" == name;
+        }
 
         public bool HasSupportedShape(INamedTypeSymbol type) =>
             (type.TypeKind == TypeKind.Class || (type.TypeKind == TypeKind.Struct && !type.IsRefLikeType))
@@ -44,7 +66,7 @@ namespace ClosedValues
                 .Where(field => field.IsStatic && field.IsReadOnly && !field.IsImplicitlyDeclared && SymbolEqualityComparer.Default.Equals(field.Type, type));
 
         public bool IsMarkedKey(IPropertySymbol property) =>
-            property.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == ClosedValueNames.KeyAttributeMetadataName);
+            property.GetAttributes().Any(attribute => IsAttribute(attribute, ClosedValueNames.KeyAttributeMetadataName));
 
         /// <summary>
         /// Returns the key: the one state property marked with [ClosedValueKey], or without a marker the single state
@@ -73,8 +95,8 @@ namespace ClosedValues
         /// <summary>Reads the switches that are set on the [ClosedValue] attribute of the type.</summary>
         public ClosedValueSwitches ReadTypeSwitches(INamedTypeSymbol type)
         {
-            AttributeData? attribute = type.GetAttributes()
-                .FirstOrDefault(each => each.AttributeClass?.ToDisplayString() == ClosedValueNames.AttributeMetadataName);
+            AttributeData? attribute = GetClosedValueAttribute(type);
+            AttributeArgumentListSyntax? arguments = (attribute?.ApplicationSyntaxReference?.GetSyntax() as AttributeSyntax)?.ArgumentList;
             bool? Read(string name)
             {
                 foreach (KeyValuePair<string, TypedConstant> argument in attribute?.NamedArguments ?? [])
@@ -82,6 +104,20 @@ namespace ClosedValues
                     if (argument.Key == name && argument.Value.Value is bool value)
                     {
                         return value;
+                    }
+                }
+
+                // An unresolved attribute has no named arguments, so read a literal true or false from the syntax.
+                foreach (AttributeArgumentSyntax argument in arguments?.Arguments ?? default)
+                {
+                    if (argument.NameEquals?.Name.Identifier.ValueText == name)
+                    {
+                        return argument.Expression.Kind() switch
+                        {
+                            SyntaxKind.TrueLiteralExpression => true,
+                            SyntaxKind.FalseLiteralExpression => false,
+                            _ => null,
+                        };
                     }
                 }
 

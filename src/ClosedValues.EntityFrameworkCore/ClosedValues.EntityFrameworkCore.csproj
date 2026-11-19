@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <DebugType>embedded</DebugType>
+    <RootNamespace>ClosedValues</RootNamespace>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>ClosedValues.EntityFrameworkCore</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Ibn Zwanckaert</Authors>
+    <Description>EF Core value converters for ClosedValues types: a nested ValueConverter per closed value type, which stores the key or the field name, and a ConfigureClosedValues() method that registers them all.</Description>
+    <PackageTags>source-generator;efcore;entity-framework-core;value-converter;smart-enum;value-object;closed</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/ThatGhost/ClosedValues</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/ThatGhost/ClosedValues</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- The package depends on ClosedValues, whose generator writes the Parse, FromName and text members that the converters call. -->
+  <ItemGroup>
+    <ProjectReference Include="..\ClosedValues\ClosedValues.csproj" PrivateAssets="none" Private="false" />
+  </ItemGroup>
+
+  <!-- The same code as the ClosedValues generator decides what a closed value type and its key are. -->
+  <ItemGroup>
+    <Compile Include="..\ClosedValues\ClosedValueSymbols.cs" Link="Shared\ClosedValueSymbols.cs" />
+    <Compile Include="..\ClosedValues\ClosedValueNames.cs" Link="Shared\ClosedValueNames.cs" />
+    <Compile Include="..\ClosedValues\ClosedValueModel.cs" Link="Shared\ClosedValueModel.cs" />
+    <Compile Include="..\ClosedValues\EquatableArray.cs" Link="Shared\EquatableArray.cs" />
+    <Compile Include="..\ClosedValues\IsExternalInit.cs" Link="Shared\IsExternalInit.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(OutputPath)$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="build\ClosedValues.EntityFrameworkCore.props" Pack="true" PackagePath="build" />
+  </ItemGroup>
+
+</Project>

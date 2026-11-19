@@ -48,6 +48,10 @@ namespace ClosedValues.Tests
         public Compilation Generate(string source, IReadOnlyDictionary<string, string> buildProperties, CancellationToken cancellationToken) =>
             Generate("Snippet", source, [], new BuildPropertiesProvider(buildProperties), cancellationToken).Generated;
 
+        /// <summary>Returns the compilation with the sources of the ClosedValues generator only, as without the EF Core package.</summary>
+        public Compilation GenerateWithoutEfCore(string source, CancellationToken cancellationToken) =>
+            Generate("Snippet", source, [], new BuildPropertiesProvider(new Dictionary<string, string>()), cancellationToken, includeEfCore: false).Generated;
+
         public MetadataReference CompileToReference(string assemblyName, string source, CancellationToken cancellationToken)
         {
             (Compilation generated, _) = Generate(assemblyName, source, [], new BuildPropertiesProvider(new Dictionary<string, string>()), cancellationToken);
@@ -66,7 +70,8 @@ namespace ClosedValues.Tests
             string source,
             MetadataReference[] extraReferences,
             AnalyzerConfigOptionsProvider options,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool includeEfCore = true)
         {
             CSharpCompilation compilation = CSharpCompilation.Create(
                 assemblyName,
@@ -74,8 +79,11 @@ namespace ClosedValues.Tests
                 references.AddRange(extraReferences),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
+            ISourceGenerator[] generators = includeEfCore
+                ? [new ClosedValueGenerator().AsSourceGenerator(), new ClosedValueEfCoreGenerator().AsSourceGenerator()]
+                : [new ClosedValueGenerator().AsSourceGenerator()];
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
-                [new ClosedValueGenerator().AsSourceGenerator()],
+                generators,
                 parseOptions: parseOptions,
                 optionsProvider: options);
             driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation generated, out ImmutableArray<Diagnostic> diagnostics, cancellationToken);

@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/ClosedValues/ClosedValues.csproj" />
+    <Project Path="src/ClosedValues.EntityFrameworkCore/ClosedValues.EntityFrameworkCore.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ClosedValues.Tests/ClosedValues.Tests.csproj" />

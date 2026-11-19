@@ -11,8 +11,6 @@ namespace ClosedValues
 
         public const string ValidationMethodName = "ValidateConstructorArguments";
 
-        public const string ModelConfigurationHintName = "ClosedValuesModelConfiguration" + GeneratedFileSuffix;
-
         public const string AttributeHintName = "ClosedValueAttribute.g.cs";
 
         public const string GeneratedFileSuffix = ".ClosedValue.g.cs";
@@ -37,7 +35,7 @@ namespace ClosedValues
         /// <summary>Whether to implement IParsable&lt;T&gt;. Overrides the MSBuild property ClosedValuesParsable.</summary>
         public bool Parsable { get; set; } = true;
 
-        /// <summary>Whether to generate the EF Core value converter. Overrides the MSBuild property ClosedValuesEfCore.</summary>
+        /// <summary>Whether the ClosedValues.EntityFrameworkCore package generates the EF Core value converter. Overrides the MSBuild property ClosedValuesEfCore.</summary>
         public bool EfCore { get; set; } = true;
     }
 

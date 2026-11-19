@@ -30,8 +30,6 @@ namespace ClosedValues
         public bool WritesJsonConverterAttribute => WritesJsonConverter && Converters.JsonConverterAttribute;
 
         public bool WritesParsable => IsParsable && Switches.Parsable != false;
-
-        public bool WritesEfCoreConverter => Converters.EfCore && Switches.EfCore != false;
     }
 
     /// <summary>
@@ -61,7 +59,5 @@ namespace ClosedValues
         bool TypeConverterAttribute,
         bool JsonConverter,
         bool JsonConverterAttribute,
-        bool JsonPropertyNames,
-        bool EfCore,
-        bool EfCoreConventions);
+        bool JsonPropertyNames);
 }

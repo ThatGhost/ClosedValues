@@ -137,7 +137,14 @@ reflection-based serializer, or keep closed values out of the types that a `Json
 
 ## EF Core
 
-When the project references EF Core, every type gets a nested `ClosedValueEfCoreConverter`. It stores the key in
+EF Core support is a separate package, `ClosedValues.EntityFrameworkCore`. It depends on ClosedValues, so it is the
+only package an EF Core project needs:
+
+```bash
+dotnet add package ClosedValues.EntityFrameworkCore
+```
+
+With it, every type gets a nested `ClosedValueEfCoreConverter`. It stores the key in
 a column of the key's type, such as `"EUR"` or `3`, or the field name when the type has no key. On EF Core 6 or
 later, the generator also writes one extension method per assembly that registers the converter of every closed
 value type in that assembly:
@@ -165,7 +172,7 @@ project with an MSBuild property. A setting on the attribute wins over the proje
 | System.Text.Json converter | `[ClosedValue(Json = false)]` | `<ClosedValuesJson>false</ClosedValuesJson>` |
 | `[TypeConverter]` attribute | `[ClosedValue(TypeConverter = false)]` | `<ClosedValuesTypeConverter>false</ClosedValuesTypeConverter>` |
 | `IParsable<T>` | `[ClosedValue(Parsable = false)]` | `<ClosedValuesParsable>false</ClosedValuesParsable>` |
-| EF Core converter | `[ClosedValue(EfCore = false)]` | `<ClosedValuesEfCore>false</ClosedValuesEfCore>` |
+| EF Core converter, from `ClosedValues.EntityFrameworkCore` | `[ClosedValue(EfCore = false)]` | `<ClosedValuesEfCore>false</ClosedValuesEfCore>` |
 
 `TypeConverter = false` removes the `[TypeConverter]` attribute, so `TypeDescriptor`, model binding and
 configuration binding no longer use the converter. The nested `ClosedValueTypeConverter` class stays, because
@@ -252,4 +259,8 @@ tests/ClosedValues.Tests/bin/Debug/net10.0/ClosedValues.Tests.exe
 
 ```bash
 dotnet pack src/ClosedValues/ClosedValues.csproj -c Release -o artifacts
+```
+
+```bash
+dotnet pack src/ClosedValues.EntityFrameworkCore/ClosedValues.EntityFrameworkCore.csproj -c Release -o artifacts
 ```
