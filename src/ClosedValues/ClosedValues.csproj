@@ -13,7 +13,7 @@
 
   <PropertyGroup>
     <PackageId>ClosedValues</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Ibn Zwanckaert</Authors>
     <Description>A source generator and analyzer for closed value types: a class, record, struct or record struct with named members and a fixed set of static instances, with generated equality, All and an exhaustive Match.</Description>
     <PackageTags>source-generator;analyzer;smart-enum;value-object;closed;record;struct</PackageTags>

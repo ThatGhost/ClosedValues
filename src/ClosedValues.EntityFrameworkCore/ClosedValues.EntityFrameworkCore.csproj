@@ -13,7 +13,7 @@
 
   <PropertyGroup>
     <PackageId>ClosedValues.EntityFrameworkCore</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Ibn Zwanckaert</Authors>
     <Description>EF Core value converters for ClosedValues types: a nested ValueConverter per closed value type, which stores the key or the field name, and a ConfigureClosedValues() method that registers them all.</Description>
     <PackageTags>source-generator;efcore;entity-framework-core;value-converter;smart-enum;value-object;closed</PackageTags>
